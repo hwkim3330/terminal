@@ -1,0 +1,132 @@
+# LFM AGI Docker 이미지
+FROM nvidia/cuda:12.1-devel-ubuntu22.04
+
+# 환경 변수 설정
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=${CUDA_HOME}/bin:${PATH}
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+
+# 작업 디렉토리 설정
+WORKDIR /app
+
+# 시스템 패키지 업데이트 및 기본 도구 설치
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-dev \
+    git \
+    curl \
+    wget \
+    vim \
+    htop \
+    build-essential \
+    cmake \
+    pkg-config \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    libavcodec-dev \
+    libavformat-dev \
+    libswscale-dev \
+    libv4l-dev \
+    libxvidcore-dev \
+    libx264-dev \
+    libgtk-3-dev \
+    libatlas-base-dev \
+    gfortran \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python 심볼릭 링크
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
+# pip 업그레이드
+RUN pip install --upgrade pip setuptools wheel
+
+# PyTorch 설치 (CUDA 지원)
+RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# 기본 Python 라이브러리 설치
+RUN pip install \
+    transformers[torch] \
+    accelerate \
+    bitsandbytes \
+    scipy \
+    numpy \
+    pandas \
+    pillow \
+    requests \
+    fastapi \
+    uvicorn[standard] \
+    websockets \
+    pydantic \
+    python-multipart \
+    aiofiles \
+    jinja2 \
+    python-dotenv \
+    tqdm \
+    psutil
+
+# 한국어 NLP 라이브러리
+RUN pip install \
+    konlpy \
+    nltk \
+    sentencepiece \
+    protobuf
+
+# 최적화 라이브러리
+RUN pip install \
+    onnx \
+    onnxruntime-gpu \
+    tensorrt \
+    nvidia-ml-py3
+
+# 추가 ML 라이브러리
+RUN pip install \
+    scikit-learn \
+    matplotlib \
+    seaborn \
+    plotly \
+    jupyter \
+    notebook
+
+# 의료 AI 라이브러리 (Clara 관련)
+RUN pip install \
+    monai \
+    nibabel \
+    pydicom \
+    simpleitk
+
+# 작업 디렉토리 및 데이터 볼륨 생성
+RUN mkdir -p /app/lfm_agi \
+    /app/data/models \
+    /app/data/cache \
+    /app/data/datasets \
+    /app/logs
+
+# 환경 변수 설정
+ENV HF_HOME=/app/data/cache/huggingface
+ENV TRANSFORMERS_CACHE=/app/data/cache/transformers
+ENV TORCH_HOME=/app/data/cache/torch
+ENV CUDA_CACHE_PATH=/app/data/cache/cuda
+
+# 포트 노출
+EXPOSE 8000 8001 8888 6006
+
+# LFM AGI 코드 복사
+COPY lfm_agi/ /app/lfm_agi/
+
+# 실행 스크립트 생성
+RUN echo '#!/bin/bash\n\
+echo "🚀 LFM AGI Docker 컨테이너 시작"\n\
+echo "💻 GPU 정보:"\n\
+nvidia-smi --query-gpu=name,memory.total,memory.used --format=csv\n\
+echo ""\n\
+echo "🤖 AGI 시스템 시작..."\n\
+cd /app/lfm_agi\n\
+python run_agi.py --mode server --host 0.0.0.0 --port 8000\n\
+' > /app/start_agi.sh && chmod +x /app/start_agi.sh
+
+# 기본 실행 명령
+CMD ["/app/start_agi.sh"]

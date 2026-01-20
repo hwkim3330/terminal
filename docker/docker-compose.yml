@@ -1,0 +1,190 @@
+version: '3.8'
+
+services:
+  lfm-agi:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.agi
+    image: lfm-agi:latest
+    container_name: lfm-agi-container
+    restart: unless-stopped
+    
+    # GPU 지원
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    
+    # 포트 매핑
+    ports:
+      - "8000:8000"   # AGI API 서버
+      - "8001:8001"   # 최적화된 모델 서버
+      - "8888:8888"   # Jupyter Notebook
+      - "6006:6006"   # TensorBoard
+    
+    # 볼륨 마운트
+    volumes:
+      - /mnt/data/lfm_agi:/app/data
+      - ./logs:/app/logs
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    
+    # 환경 변수
+    environment:
+      - DISPLAY=${DISPLAY}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - HF_HOME=/app/data/cache/huggingface
+      - TRANSFORMERS_CACHE=/app/data/cache/transformers
+      - TORCH_HOME=/app/data/cache/torch
+      - CUDA_CACHE_PATH=/app/data/cache/cuda
+      - OMP_NUM_THREADS=8
+      - MKL_NUM_THREADS=8
+      - TOKENIZERS_PARALLELISM=false
+      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+    
+    # 네트워크 설정
+    networks:
+      - agi-network
+    
+    # 헬스 체크
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # NVIDIA Clara 컨테이너 (옵션)
+  clara:
+    image: nvcr.io/nvidia/clara/clara-train-sdk:v4.0
+    container_name: clara-container
+    restart: unless-stopped
+    profiles: ["clara"]  # 선택적 실행
+    
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    
+    ports:
+      - "8890:8888"   # Clara Jupyter
+      - "6007:6006"   # Clara TensorBoard
+    
+    volumes:
+      - /mnt/data/lfm_agi/clara:/workspace
+      - /mnt/data/lfm_agi/datasets:/data
+    
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    
+    command: ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--allow-root", "--no-browser"]
+    
+    networks:
+      - agi-network
+
+  # Ollama 서비스
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama-container
+    restart: unless-stopped
+    profiles: ["ollama"]  # 선택적 실행
+    
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    
+    ports:
+      - "11434:11434"
+    
+    volumes:
+      - /mnt/data/lfm_agi/ollama_models:/root/.ollama
+    
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - OLLAMA_MODELS=/root/.ollama
+    
+    networks:
+      - agi-network
+
+  # Redis 캐시 (옵션)
+  redis:
+    image: redis:7-alpine
+    container_name: redis-cache
+    restart: unless-stopped
+    profiles: ["cache"]
+    
+    ports:
+      - "6379:6379"
+    
+    volumes:
+      - redis-data:/data
+    
+    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
+    
+    networks:
+      - agi-network
+
+  # 모니터링 (Prometheus + Grafana)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    
+    ports:
+      - "9090:9090"
+    
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    
+    networks:
+      - agi-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    
+    ports:
+      - "3000:3000"
+    
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+    
+    networks:
+      - agi-network
+
+networks:
+  agi-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  prometheus-data:
+  grafana-data:

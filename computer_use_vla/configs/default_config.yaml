@@ -1,0 +1,81 @@
+# Computer Use VLA - Default Configuration
+# Inspired by NVIDIA Alpamayo configuration
+
+# Model Configuration
+model:
+  # VLM backbone options:
+  # - "LiquidAI/LFM2.5-VL-1.6B" (lightweight, edge-friendly)
+  # - "Qwen/Qwen2-VL-7B-Instruct" (more powerful)
+  name: "LiquidAI/LFM2.5-VL-1.6B"
+  dtype: "float16"  # float16, bfloat16, float32
+  device: "cuda"    # cuda, cpu
+
+  # Attention implementation
+  # - "flash_attention_2" (fastest, requires flash-attn)
+  # - "sdpa" (PyTorch native)
+  # - "eager" (standard)
+  attn_implementation: "sdpa"
+
+  # Action space configuration
+  action_space:
+    type: "continuous"  # continuous, discrete
+    grid_size: 100      # For discrete action space
+
+# Chain-of-Thought Reasoning
+reasoning:
+  enabled: true
+  max_tokens: 512
+
+  # Reasoning steps (inspired by Alpamayo's Chain-of-Causation)
+  steps:
+    - screen_analysis    # What is on the screen?
+    - task_understanding # What needs to be done?
+    - ui_identification  # Where are relevant elements?
+    - action_planning    # What action should be taken?
+    - safety_check       # Is this action safe?
+
+# Controller Configuration
+controller:
+  # Backend options: pyautogui, xdotool, dummy
+  backend: "pyautogui"
+
+  # Screen dimensions (auto-detected if not specified)
+  screen_width: 1920
+  screen_height: 1080
+
+  # Timing
+  mouse_move_duration: 0.3  # seconds
+  click_delay: 0.1          # seconds
+  typing_interval: 0.05     # seconds between keystrokes
+
+  # Safety
+  safe_mode: true           # Block dangerous actions
+  dry_run: false            # Don't execute actions (for testing)
+
+# Agent Configuration
+agent:
+  max_steps: 50             # Maximum steps per task
+  max_retries: 3            # Retries on failure
+  step_delay: 0.5           # Delay between steps
+  screenshot_delay: 0.3     # Delay before screenshot
+  verbose: true             # Detailed logging
+
+# Trajectory Generation (Flow Matching)
+trajectory:
+  # Mouse trajectory settings
+  length: 16                # Number of waypoints
+
+  # Flow matching parameters
+  num_inference_steps: 10
+  integration_method: "euler"  # euler, heun
+
+  # Bezier fallback (faster than flow matching)
+  use_bezier: true
+  bezier_curvature: 0.2
+
+# Logging
+logging:
+  level: "INFO"
+  save_screenshots: true
+  save_history: true
+  output_dir: "./outputs"
